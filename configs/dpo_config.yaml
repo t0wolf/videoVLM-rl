@@ -1,0 +1,40 @@
+# DPO 训练配置 - 双卡 RTX 4090 优化版
+# 核心工作，重点调参
+
+model:
+  policy_name: "./output/sft"  # SFT 后的模型作为 policy
+  ref_name: "Qwen/Qwen3-VL-8B-Instruct"  # 原始模型作为 reference
+  torch_dtype: "bfloat16"
+  device_map: "auto"
+
+lora:
+  r: 64
+  lora_alpha: 128
+  target_modules: "all-linear"
+  lora_dropout: 0.05
+
+dpo:
+  beta: 0.1
+  loss_type: "sigmoid"
+  max_length: 2048
+  max_prompt_length: 1024
+
+training:
+  output_dir: "./output/dpo"
+  num_train_epochs: 1
+  per_device_train_batch_size: 2      # 每卡 batch=2
+  gradient_accumulation_steps: 2      # 有效 batch = 2卡 × 2 × 2 = 8
+  learning_rate: 5.0e-6
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.05
+  bf16: true
+  logging_steps: 10
+  save_strategy: "epoch"
+  save_total_limit: 1
+  dataloader_num_workers: 4
+  gradient_checkpointing: true
+  deepspeed: "configs/ds_config_zero3.json"  # DPO 用 ZeRO-3 更激进分片
+
+data:
+  preference_file: "./data/dpo_preference_data.jsonl"
+  num_frames: 8

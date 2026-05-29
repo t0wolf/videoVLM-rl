@@ -1,0 +1,37 @@
+# SFT 训练配置 - 双卡 RTX 4090 优化版
+# 轻量适配，1 epoch，目的是让模型见过视频 QA 数据分布
+
+model:
+  name: "Qwen/Qwen3-VL-8B-Instruct"
+  torch_dtype: "bfloat16"
+  device_map: "auto"  # 多卡时自动分配
+
+lora:
+  r: 32
+  lora_alpha: 64
+  target_modules: "all-linear"
+  lora_dropout: 0.05
+
+training:
+  output_dir: "./output/sft"
+  num_train_epochs: 1
+  per_device_train_batch_size: 2      # 每卡 batch=2
+  gradient_accumulation_steps: 2      # 有效 batch = 2卡 × 2 × 2 = 8
+  learning_rate: 2.0e-5
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  bf16: true
+  max_seq_length: 2048
+  logging_steps: 10
+  save_strategy: "epoch"
+  save_total_limit: 1
+  dataloader_num_workers: 4
+  gradient_checkpointing: true        # 省显存，必须开
+  deepspeed: "configs/ds_config_zero2.json"  # 双卡 DeepSpeed
+
+data:
+  dataset_name: "llava-hf/LLaVA-Video-178K"
+  max_samples: 5000
+  num_frames: 8
+  video_dir: "./data/videos"
+  sft_file: "./data/sft_train.jsonl"

@@ -1,0 +1,31 @@
+# 数据
+data/videos/
+data/llava_video_cache/
+data/*.jsonl
+
+# 模型输出
+output/
+
+# DeepSpeed
+zero_to_fp32.py
+*.pt
+*.bin
+
+# 临时文件
+tmp_frames/
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# 系统
+.DS_Store
+*.swp
+*~
+
+# 日志
+wandb/
+runs/

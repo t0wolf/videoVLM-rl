@@ -1,0 +1,29 @@
+# 核心依赖
+torch>=2.4.0
+torchvision>=0.19.0
+torchaudio>=2.4.0
+
+# Transformers & TRL
+transformers>=4.51.0
+trl>=0.12.0
+peft>=0.7.0
+accelerate>=0.28.0
+datasets>=2.18.0
+
+# DeepSpeed（双卡 4090 分布式训练）
+deepspeed>=0.14.0
+
+# 视频处理
+av>=12.0.0
+qwen-vl-utils
+
+# Flash Attention（4090 必须装）
+flash-attn>=2.5.0
+
+# 评测（可选，benchmark 评测时安装）
+# pip install git+https://github.com/EvolvingLMMs-Lab/lmms-eval.git
+
+# 工具
+pyyaml
+tqdm
+matplotlib
