@@ -1,6 +1,6 @@
 """
 Step 1: 准备 SFT 训练数据
-从 LLaVA-Video-178K 采样数据，格式化为 Qwen3-VL 训练格式
+从 ShareGPTVideo 采样数据，格式化为 Qwen3-VL 训练格式
 """
 
 import json
@@ -9,7 +9,7 @@ import random
 from pathlib import Path
 
 def download_dataset(output_dir: str = "./data"):
-    """下载 LLaVA-Video-178K 数据集"""
+    """下载 ShareGPTVideo 数据集"""
     os.makedirs(output_dir, exist_ok=True)
     
     print("=" * 60)
@@ -22,16 +22,16 @@ def download_dataset(output_dir: str = "./data"):
         print(f"数据集已存在: {cache_dir}")
         return cache_dir
     
-    print("正在下载 LLaVA-Video-178K 数据集...")
+    print("正在下载 ShareGPTVideo 数据集...")
     print("如果下载慢，可以手动下载：")
-    print("  huggingface-cli download --repo-type dataset lmms-lab/LLaVA-Video-178K")
+    print("  huggingface-cli download --repo-type dataset ShareGPTVideo/train_video_and_instruction")
     
     # 使用 HuggingFace datasets 库下载
     try:
         from datasets import load_dataset
         
         dataset = load_dataset(
-            "lmms-lab/LLaVA-Video-178K",
+            "ShareGPTVideo/train_video_and_instruction",
             split="train",
             cache_dir=cache_dir,
             trust_remote_code=True,
@@ -57,7 +57,7 @@ def sample_and_format(
         from datasets import load_dataset
         
         dataset = load_dataset(
-            "lmms-lab/LLaVA-Video-178K",
+            "ShareGPTVideo/train_video_and_instruction",
             split="train",
             cache_dir="./data/llava_video_cache",
             trust_remote_code=True,
@@ -75,7 +75,7 @@ def sample_and_format(
         with open(output_file, "w", encoding="utf-8") as f:
             for item in sampled:
                 try:
-                    # LLaVA-Video-178K 的数据格式
+                    # ShareGPTVideo 的数据格式
                     video_path = item.get("video", "")
                     conversations = item.get("conversations", [])
                     

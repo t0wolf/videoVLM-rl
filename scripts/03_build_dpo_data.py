@@ -15,7 +15,7 @@ from pathlib import Path
 # 配置
 # ============================================================
 MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "your-api-key")
-MIMO_API_BASE_URL = os.environ.get("MIMO_API_BASE_URL", "https://api.your-provider.com/v1")
+MIMO_API_BASE_URL = os.environ.get("MIMO_API_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
 MIMO_MODEL = os.environ.get("MIMO_MODEL", "MiMo-V2.5")
 
 # 评分 Prompt
