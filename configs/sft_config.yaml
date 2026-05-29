@@ -30,7 +30,7 @@ training:
   deepspeed: "configs/ds_config_zero2.json"  # 双卡 DeepSpeed
 
 data:
-  dataset_name: "ShareGPTVideo/train_video_and_instruction"
+  dataset_name: "lmms-lab/VideoChatGPT"
   max_samples: 5000
   num_frames: 8
   video_dir: "./data/videos"
