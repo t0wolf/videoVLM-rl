@@ -1,6 +1,6 @@
 """
 Step 1: 准备 SFT 训练数据
-从 VideoChatGPT 采样数据，格式化为 Qwen3-VL 训练格式
+从 VideoChatGPT 本地 parquet 文件读取，格式化为 Qwen3-VL 训练格式
 """
 
 import json
@@ -8,124 +8,102 @@ import os
 import random
 from pathlib import Path
 
-def download_dataset(output_dir: str = "./data"):
-    """下载 VideoChatGPT 数据集"""
-    os.makedirs(output_dir, exist_ok=True)
+
+def load_parquet_data(data_dir: str = "./data/VideoChatGPT"):
+    """从本地 parquet 文件加载数据"""
+    import pandas as pd
+    
+    all_data = []
+    
+    # 读取三个子集
+    for subset in ["Generic", "Consistency", "Temporal"]:
+        parquet_file = os.path.join(data_dir, subset, "test-00000-of-00001.parquet")
+        if os.path.exists(parquet_file):
+            df = pd.read_parquet(parquet_file)
+            print(f"  {subset}: {len(df)} 条")
+            all_data.append(df)
+        else:
+            print(f"  {subset}: 文件不存在，跳过")
+    
+    # 合并
+    import pandas as pd
+    combined = pd.concat(all_data, ignore_index=True)
+    print(f"  总计: {len(combined)} 条")
+    
+    return combined
+
+
+def format_to_sft(
+    data_dir: str = "./data/VideoChatGPT",
+    video_dir: str = "./data/VideoChatGPT/Test_Videos",
+    output_file: str = "./data/sft_train.jsonl",
+    max_samples: int = 5000,
+    seed: int = 42,
+):
+    """将 parquet 数据转换为 SFT 训练格式"""
     
     print("=" * 60)
     print("准备 SFT 数据")
     print("=" * 60)
     
-    # 检查是否已下载
-    cache_dir = os.path.join(output_dir, "llava_video_cache")
-    if os.path.exists(cache_dir):
-        print(f"数据集已存在: {cache_dir}")
-        return cache_dir
+    # 加载数据
+    print("\n加载 parquet 数据...")
+    df = load_parquet_data(data_dir)
     
-    print("正在下载 VideoChatGPT 数据集...")
-    print("如果下载慢，可以手动下载：")
-    print("  huggingface-cli download --repo-type dataset lmms-lab/VideoChatGPT")
+    # 随机采样
+    random.seed(seed)
+    if len(df) > max_samples:
+        df = df.sample(n=max_samples, random_state=seed)
+        print(f"\n随机采样 {max_samples} 条")
     
-    # 使用 HuggingFace datasets 库下载
-    try:
-        from datasets import load_dataset
-        
-        dataset = load_dataset(
-            "lmms-lab/VideoChatGPT",
-            split="train",
-            cache_dir=cache_dir,
-            trust_remote_code=True,
-        )
-        print(f"下载完成，共 {len(dataset)} 条数据")
-        return cache_dir
-    except Exception as e:
-        print(f"下载失败: {e}")
-        print("请手动下载数据集到:", cache_dir)
-        return None
-
-
-def sample_and_format(
-    max_samples: int = 15000,
-    output_file: str = "./data/sft_train.jsonl",
-    seed: int = 42,
-):
-    """从数据集中采样并格式化"""
+    # 格式化
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
-    print(f"\n采样 {max_samples} 条数据...")
+    formatted_count = 0
+    skipped = 0
     
-    try:
-        from datasets import load_dataset
-        
-        dataset = load_dataset(
-            "lmms-lab/VideoChatGPT",
-            split="train",
-            cache_dir="./data/llava_video_cache",
-            trust_remote_code=True,
-        )
-        
-        # 随机采样
-        random.seed(seed)
-        indices = random.sample(range(len(dataset)), min(max_samples, len(dataset)))
-        sampled = dataset.select(indices)
-        
-        # 格式化为 Qwen3-VL 训练格式
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-        
-        formatted_count = 0
-        with open(output_file, "w", encoding="utf-8") as f:
-            for item in sampled:
-                try:
-                    # VideoChatGPT 的数据格式
-                    video_path = item.get("video", "")
-                    conversations = item.get("conversations", [])
-                    
-                    if not video_path or not conversations:
-                        continue
-                    
-                    # 转换为 ShareGPT 格式
-                    formatted = {
-                        "videos": [video_path],
-                        "conversations": [],
-                    }
-                    
-                    for conv in conversations:
-                        role = conv.get("from", "")
-                        content = conv.get("value", "")
-                        
-                        # 映射角色
-                        if role in ["human", "user"]:
-                            formatted["conversations"].append({
-                                "role": "user",
-                                "content": content,
-                            })
-                        elif role in ["gpt", "assistant"]:
-                            formatted["conversations"].append({
-                                "role": "assistant",
-                                "content": content,
-                            })
-                    
-                    if len(formatted["conversations"]) >= 2:
-                        f.write(json.dumps(formatted, ensure_ascii=False) + "\n")
-                        formatted_count += 1
-                        
-                except Exception as e:
-                    continue
-        
-        print(f"格式化完成，共 {formatted_count} 条有效数据")
-        print(f"输出文件: {output_file}")
-        
-        # 统计信息
-        print(f"\n数据统计:")
-        print(f"  总样本数: {formatted_count}")
-        print(f"  平均对话轮数: ~2")
-        print(f"  输出格式: ShareGPT (role + content)")
-        
-        return output_file
-        
-    except Exception as e:
-        print(f"处理失败: {e}")
-        print("\n请确保已安装 datasets 库: pip install datasets")
-        return None
+    with open(output_file, "w", encoding="utf-8") as f:
+        for _, row in df.iterrows():
+            video_name = row.get("video_name", "")
+            question = row.get("question", "")
+            answer = row.get("answer", "")
+            
+            # 构建视频路径
+            video_path = os.path.join(video_dir, f"{video_name}.mp4")
+            
+            # 检查视频文件是否存在
+            if not os.path.exists(video_path):
+                skipped += 1
+                continue
+            
+            if not question or not answer:
+                skipped += 1
+                continue
+            
+            # 转换为 ShareGPT 格式
+            formatted = {
+                "videos": [video_path],
+                "conversations": [
+                    {"role": "user", "content": f"<video>\n{question}"},
+                    {"role": "assistant", "content": answer},
+                ],
+            }
+            
+            f.write(json.dumps(formatted, ensure_ascii=False) + "\n")
+            formatted_count += 1
+    
+    print(f"\n格式化完成！")
+    print(f"  有效数据: {formatted_count} 条")
+    print(f"  跳过: {skipped} 条（视频不存在或数据缺失）")
+    print(f"  输出文件: {output_file}")
+    
+    # 打印示例
+    print(f"\n示例数据:")
+    with open(output_file, "r", encoding="utf-8") as f:
+        example = json.loads(f.readline())
+        print(json.dumps(example, ensure_ascii=False, indent=2))
+    
+    return output_file
 
 
 def generate_dummy_sft_data(num_samples: int = 100, output_file: str = "./data/sft_train_dummy.jsonl"):
@@ -147,13 +125,6 @@ def generate_dummy_sft_data(num_samples: int = 100, output_file: str = "./data/s
                 {"role": "assistant", "content": "视频显示一个人在公园里跑步，他穿着运动服，沿着小径慢跑。"},
             ],
         },
-        {
-            "videos": ["videos/sample_003.mp4"],
-            "conversations": [
-                {"role": "user", "content": "<video>\n请详细描述视频中的场景和人物动作。"},
-                {"role": "assistant", "content": "视频开始时，画面显示一个阳光明媚的公园。一个穿蓝色运动服的男性从画面左侧走入，开始在小径上慢跑。他跑了约30秒后，在一张长椅旁停下休息。"},
-            ],
-        },
     ]
     
     with open(output_file, "w", encoding="utf-8") as f:
@@ -170,8 +141,10 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="准备 SFT 训练数据")
-    parser.add_argument("--max-samples", type=int, default=15000, help="最大采样数")
+    parser.add_argument("--data-dir", type=str, default="./data/VideoChatGPT", help="数据集目录")
+    parser.add_argument("--video-dir", type=str, default="./data/VideoChatGPT/Test_Videos", help="视频目录")
     parser.add_argument("--output", type=str, default="./data/sft_train.jsonl", help="输出文件")
+    parser.add_argument("--max-samples", type=int, default=5000, help="最大采样数")
     parser.add_argument("--dummy", action="store_true", help="生成示例数据")
     
     args = parser.parse_args()
@@ -179,4 +152,9 @@ if __name__ == "__main__":
     if args.dummy:
         generate_dummy_sft_data(num_samples=200)
     else:
-        sample_and_format(max_samples=args.max_samples, output_file=args.output)
+        format_to_sft(
+            data_dir=args.data_dir,
+            video_dir=args.video_dir,
+            output_file=args.output,
+            max_samples=args.max_samples,
+        )
