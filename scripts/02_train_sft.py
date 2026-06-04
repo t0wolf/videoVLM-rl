@@ -63,7 +63,6 @@ def train(config: dict):
     model = Qwen3VLForConditionalGeneration.from_pretrained(
         model_name,
         torch_dtype=torch.bfloat16,
-        device_map=config["model"]["device_map"],
         attn_implementation="flash_attention_2",
     )
     processor = AutoProcessor.from_pretrained(model_name)
