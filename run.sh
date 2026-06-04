@@ -1,12 +1,12 @@
 #!/bin/bash
 # ============================================================
-# 视频 VLM DPO 偏好对齐项目 - 双卡 RTX 4090 运行脚本
+# 视频 VLM GRPO 偏好对齐项目 - 双卡 RTX 4090 运行脚本
 # ============================================================
 
 set -e
 
 echo "============================================================"
-echo "视频 VLM DPO 偏好对齐项目（双卡 4090）"
+echo "视频 VLM GRPO 偏好对齐项目（双卡 4090）"
 echo "============================================================"
 
 # 检查 GPU
@@ -38,27 +38,26 @@ echo "[2/5] SFT 训练（双卡 4090）..."
 deepspeed --num_gpus=2 scripts/02_train_sft.py \
     --config configs/sft_config.yaml
 
-# Step 3: 构建 DPO 偏好数据（单卡即可，不需要分布式）
+# Step 3: 构建 GRPO 数据（比 DPO 简单，不需要偏好对）
 echo ""
-echo "[3/5] 构建 DPO 偏好数据..."
-python scripts/03_build_dpo_data.py \
-    --sft-model ./output/sft \
+echo "[3/5] 构建 GRPO 训练数据..."
+python scripts/03_build_grpo_data.py \
     --sft-data ./data/sft_train.jsonl \
-    --output ./data/dpo_preference_data.jsonl \
+    --output ./data/grpo_train.jsonl \
     --max-samples 1000
 
-# Step 4: DPO 训练（双卡 DeepSpeed）
+# Step 4: GRPO 训练（双卡 DeepSpeed）
 echo ""
-echo "[4/5] DPO 训练（双卡 4090）..."
-deepspeed --num_gpus=2 scripts/04_train_dpo.py \
-    --config configs/dpo_config.yaml
+echo "[4/5] GRPO 训练（双卡 4090）..."
+deepspeed --num_gpus=2 scripts/04_train_grpo.py \
+    --config configs/grpo_config.yaml
 
 # Step 5: 评测
 echo ""
 echo "[5/5] 评测..."
 python scripts/05_evaluate.py \
     --sft-model ./output/sft \
-    --dpo-model ./output/dpo \
+    --grpo-model ./output/grpo \
     --qualitative
 
 echo ""
@@ -67,5 +66,5 @@ echo "项目完成！（双卡 4090）"
 echo "============================================================"
 echo "输出目录："
 echo "  SFT 模型: ./output/sft"
-echo "  DPO 模型: ./output/dpo"
+echo "  GRPO 模型: ./output/grpo"
 echo "  定性分析: ./output/qualitative_analysis.json"

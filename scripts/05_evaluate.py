@@ -47,18 +47,18 @@ def run_lmms_eval(
 
 def qualitative_analysis(
     sft_model_path: str,
-    dpo_model_path: str,
+    grpo_model_path: str,
     test_data_file: str = "./data/sft_train.jsonl",
     output_file: str = "./output/qualitative_analysis.json",
     num_samples: int = 100,
 ):
-    """定性分析：对比 SFT vs DPO 的输出质量"""
+    """定性分析：对比 SFT vs GRPO 的输出质量"""
     import torch
     from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
     import random
     
     print("\n" + "=" * 60)
-    print("定性分析：SFT vs DPO 对比")
+    print("定性分析：SFT vs GRPO 对比")
     print("=" * 60)
     
     # 加载测试数据
@@ -78,11 +78,11 @@ def qualitative_analysis(
     )
     sft_processor = AutoProcessor.from_pretrained(sft_model_path)
     
-    print("加载 DPO 模型...")
-    dpo_model = Qwen3VLForConditionalGeneration.from_pretrained(
-        dpo_model_path, torch_dtype=torch.bfloat16, device_map="auto"
+    print("加载 GRPO 模型...")
+    grpo_model = Qwen3VLForConditionalGeneration.from_pretrained(
+        grpo_model_path, torch_dtype=torch.bfloat16, device_map="auto"
     )
-    dpo_processor = AutoProcessor.from_pretrained(dpo_model_path)
+    grpo_processor = AutoProcessor.from_pretrained(grpo_model_path)
     
     # 生成对比
     results = []
@@ -100,128 +100,123 @@ def qualitative_analysis(
         if not video_path or not question:
             continue
         
-        print(f"[{i+1}/{len(test_samples)}] {question[:50]}...")
+        print(f"\r[{i+1}/{len(test_samples)}] {question[:50]}...", end="", flush=True)
         
-        # SFT 生成
+        # 生成回答
         try:
-            messages = [{"role": "user", "content": [
-                {"type": "video", "video": video_path},
-                {"type": "text", "text": question},
-            ]}]
-            text = sft_processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            inputs = sft_processor(text=[text], videos=[video_path], return_tensors="pt").to(sft_model.device)
+            # SFT 回答
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "video", "video": video_path},
+                        {"type": "text", "text": question},
+                    ],
+                }
+            ]
+            
+            text = sft_processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            inputs = sft_processor(
+                text=[text],
+                videos=[video_path],
+                return_tensors="pt",
+            ).to(sft_model.device)
+            
             with torch.no_grad():
-                sft_out = sft_model.generate(**inputs, max_new_tokens=256)
-            sft_answer = sft_processor.decode(sft_out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-        except Exception as e:
-            sft_answer = f"生成失败: {e}"
-        
-        # DPO 生成
-        try:
-            messages = [{"role": "user", "content": [
-                {"type": "video", "video": video_path},
-                {"type": "text", "text": question},
-            ]}]
-            text = dpo_processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            inputs = dpo_processor(text=[text], videos=[video_path], return_tensors="pt").to(dpo_model.device)
+                output = sft_model.generate(**inputs, max_new_tokens=256, do_sample=False)
+            
+            sft_response = sft_processor.decode(
+                output[0][inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True,
+            ).strip()
+            
+            # GRPO 回答
+            text = grpo_processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            inputs = grpo_processor(
+                text=[text],
+                videos=[video_path],
+                return_tensors="pt",
+            ).to(grpo_model.device)
+            
             with torch.no_grad():
-                dpo_out = dpo_model.generate(**inputs, max_new_tokens=256)
-            dpo_answer = dpo_processor.decode(dpo_out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+                output = grpo_model.generate(**inputs, max_new_tokens=256, do_sample=False)
+            
+            grpo_response = grpo_processor.decode(
+                output[0][inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True,
+            ).strip()
+            
+            results.append({
+                "video": video_path,
+                "question": question,
+                "ground_truth": gt_answer,
+                "sft_response": sft_response,
+                "grpo_response": grpo_response,
+            })
+            
         except Exception as e:
-            dpo_answer = f"生成失败: {e}"
-        
-        results.append({
-            "video_path": video_path,
-            "question": question,
-            "ground_truth": gt_answer,
-            "sft_answer": sft_answer,
-            "dpo_answer": dpo_answer,
-            "sft_length": len(sft_answer),
-            "dpo_length": len(dpo_answer),
-        })
-    
-    # 统计分析
-    sft_lengths = [r["sft_length"] for r in results]
-    dpo_lengths = [r["dpo_length"] for r in results]
-    
-    analysis = {
-        "num_samples": len(results),
-        "sft_avg_length": sum(sft_lengths) / len(sft_lengths) if sft_lengths else 0,
-        "dpo_avg_length": sum(dpo_lengths) / len(dpo_lengths) if dpo_lengths else 0,
-        "length_change_pct": (
-            (sum(dpo_lengths) - sum(sft_lengths)) / sum(sft_lengths) * 100
-            if sum(sft_lengths) > 0 else 0
-        ),
-        "samples": results[:50],  # 只保存前 50 个样本
-    }
+            print(f"\n  生成失败: {e}")
+            continue
     
     # 保存结果
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(analysis, f, ensure_ascii=False, indent=2)
+        json.dump(results, f, ensure_ascii=False, indent=2)
     
-    print(f"\n{'=' * 60}")
-    print("定性分析结果：")
-    print(f"  SFT 平均回答长度: {analysis['sft_avg_length']:.1f} 字符")
-    print(f"  DPO 平均回答长度: {analysis['dpo_avg_length']:.1f} 字符")
-    print(f"  长度变化: {analysis['length_change_pct']:+.1f}%")
-    print(f"  结果保存在: {output_file}")
-    print(f"{'=' * 60}")
+    print(f"\n\n定性分析完成！共 {len(results)} 条对比结果")
+    print(f"输出文件: {output_file}")
     
-    return analysis
-
-
-def compare_baselines(eval_dir: str = "./output/eval"):
-    """对比三组实验的 benchmark 结果"""
-    
+    # 打印几个示例
     print("\n" + "=" * 60)
-    print("Benchmark 结果对比")
+    print("示例对比：")
     print("=" * 60)
+    for i, r in enumerate(results[:3]):
+        print(f"\n--- 示例 {i+1} ---")
+        print(f"问题: {r['question']}")
+        print(f"Ground Truth: {r['ground_truth'][:100]}...")
+        print(f"SFT: {r['sft_response'][:100]}...")
+        print(f"GRPO: {r['grpo_response'][:100]}...")
     
-    # 官方 baseline
-    official_scores = {
-        "videomme": 71.4,
-        "mlvu": 78.1,
-        "videommmu": 65.3,
-    }
-    
-    # 尝试加载实验结果
-    results = {"official": official_scores}
-    
-    for model_name in ["sft", "dpo"]:
-        result_file = os.path.join(eval_dir, model_name, "results.json")
-        if os.path.exists(result_file):
-            with open(result_file) as f:
-                results[model_name] = json.load(f)
-    
-    # 输出对比表格
-    print(f"\n{'模型':<20} {'VideoMME':<12} {'MLVU':<12} {'VideoMMMU':<12}")
-    print("-" * 56)
-    
-    for name, scores in results.items():
-        vme = scores.get("videomme", "-")
-        mlvu = scores.get("mlvu", "-")
-        vmmmu = scores.get("videommmu", "-")
-        print(f"{name:<20} {str(vme):<12} {str(mlvu):<12} {str(vmmmu):<12}")
+    return results
 
 
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="模型评测")
-    parser.add_argument("--sft-model", type=str, default="./output/sft")
-    parser.add_argument("--dpo-model", type=str, default="./output/dpo")
-    parser.add_argument("--benchmark", action="store_true", help="运行 benchmark 评测")
+    parser = argparse.ArgumentParser(description="评测脚本")
+    parser.add_argument("--sft-model", type=str, default="./output/sft", help="SFT 模型路径")
+    parser.add_argument("--grpo-model", type=str, default="./output/grpo", help="GRPO 模型路径")
     parser.add_argument("--qualitative", action="store_true", help="运行定性分析")
-    parser.add_argument("--compare", action="store_true", help="对比结果")
+    parser.add_argument("--lmms-eval", action="store_true", help="运行 lmms-eval 自动评测")
+    parser.add_argument("--benchmarks", nargs="+", default=["videomme", "mlvu"], help="评测 benchmark")
     
     args = parser.parse_args()
     
-    if args.benchmark:
-        run_lmms_eval(args.dpo_model)
-    
     if args.qualitative:
-        qualitative_analysis(args.sft_model, args.dpo_model)
+        qualitative_analysis(
+            sft_model_path=args.sft_model,
+            grpo_model_path=args.grpo_model,
+        )
     
-    if args.compare or (not args.benchmark and not args.qualitative):
-        compare_baselines()
+    if args.lmms_eval:
+        print("\n" + "=" * 60)
+        print("运行 lmms-eval 自动评测...")
+        print("=" * 60)
+        
+        # 评测 SFT 模型
+        run_lmms_eval(
+            model_path=args.sft_model,
+            benchmarks=args.benchmarks,
+            output_dir="./output/eval_sft",
+        )
+        
+        # 评测 GRPO 模型
+        run_lmms_eval(
+            model_path=args.grpo_model,
+            benchmarks=args.benchmarks,
+            output_dir="./output/eval_grpo",
+        )
