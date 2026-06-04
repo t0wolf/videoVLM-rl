@@ -116,7 +116,7 @@ def train(config: dict):
         "lr_scheduler_type": training_config["lr_scheduler_type"],
         "warmup_ratio": training_config["warmup_ratio"],
         "bf16": training_config["bf16"],
-        "max_seq_length": training_config["max_seq_length"],
+        "max_length": training_config["max_length"],
         "logging_steps": training_config["logging_steps"],
         "save_strategy": training_config["save_strategy"],
         "save_total_limit": training_config["save_total_limit"],
