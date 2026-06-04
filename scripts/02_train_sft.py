@@ -165,6 +165,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="轻量 SFT 训练（双卡 4090）")
     parser.add_argument("--config", type=str, default="configs/sft_config.yaml", help="配置文件路径")
+    parser.add_argument("--local_rank", type=int, default=-1, help="DeepSpeed local_rank")
     
     args = parser.parse_args()
     
