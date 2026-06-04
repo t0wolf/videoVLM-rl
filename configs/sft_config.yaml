@@ -1,31 +1,33 @@
+# SFT 训练配置 - 双卡 RTX 4090 优化版
+
+model:
+  name: "./ckpts/Qwen3-VL-8B-Instruct"
+  torch_dtype: "bfloat16"
+  device_map: "auto"
+
+lora:
+  r: 32
+  lora_alpha: 64
+  target_modules: "all-linear"
+  lora_dropout: 0.05
+
+training:
+  output_dir: "./output/sft"
+  num_train_epochs: 1
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 2
+  learning_rate: 2.0e-5
+  lr_scheduler_type: "cosine"
+  bf16: true
+  max_length: 2048
+  logging_steps: 10
+  save_strategy: "epoch"
+  save_total_limit: 1
+  dataloader_num_workers: 4
+  gradient_checkpointing: true
+  deepspeed: "configs/ds_config_zero2.json"
+
 data:
-  dataset_name: lmms-lab/VideoChatGPT
   max_samples: 5000
   num_frames: 8
-  sft_file: ./data/sft_train.jsonl
-  video_dir: ./data/videos
-lora:
-  lora_alpha: 64
-  lora_dropout: 0.05
-  r: 32
-  target_modules: all-linear
-model:
-  device_map: auto
-  name: ./ckpts/Qwen3-VL-8B-Instruct
-  torch_dtype: bfloat16
-training:
-  bf16: true
-  dataloader_num_workers: 4
-  deepspeed: configs/ds_config_zero2.json
-  gradient_accumulation_steps: 2
-  gradient_checkpointing: true
-  learning_rate: 2.0e-05
-  logging_steps: 10
-  lr_scheduler_type: cosine
-  max_length: 2048
-  num_train_epochs: 1
-  output_dir: ./output/sft
-  per_device_train_batch_size: 2
-  save_strategy: epoch
-  save_total_limit: 1
-  warmup_ratio: 0.03
+  sft_file: "./data/sft_train.jsonl"
