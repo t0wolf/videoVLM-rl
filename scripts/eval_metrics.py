@@ -8,6 +8,7 @@ import os
 import re
 import string
 import torch
+import time
 from collections import Counter
 
 
@@ -174,6 +175,7 @@ def evaluate_model(
                 reference = conv["content"]
         
         # 生成回答
+        import gc
         try:
             messages = [{"role": "user", "content": [
                 {"type": "video", "video": video_path},
@@ -188,9 +190,18 @@ def evaluate_model(
             
             prediction = processor.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
             
+            # 清理资源
+            del inputs, output
+            torch.cuda.empty_cache()
+            gc.collect()
+            time.sleep(0.5)
+            
         except Exception as e:
             print(f"  [{i+1}] 生成失败: {e}")
             prediction = ""
+            torch.cuda.empty_cache()
+            gc.collect()
+            time.sleep(1)
         
         # 计算指标
         f1 = compute_f1(prediction, reference)
