@@ -10,9 +10,9 @@ import argparse
 
 
 # MiMo API 配置
-MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "your-api-key")
+MIMO_API_KEY = os.environ.get("MIMO_API_KEY", "tp-chvb2livf8qw5873xt1hij288n3o8tfgc3j8qzmzcn7vhfoo")
 MIMO_API_BASE_URL = os.environ.get("MIMO_API_BASE_URL", "https://token-plan-cn.xiaomimimo.com/v1")
-MIMO_MODEL = os.environ.get("MIMO_MODEL", "MiMo-V2.5")
+MIMO_MODEL = os.environ.get("MIMO_MODEL", "mimo-v2.5-pro")
 
 SCORING_PROMPT = """你是一个视频理解质量评估专家。请严格评估以下回答的质量。
 
