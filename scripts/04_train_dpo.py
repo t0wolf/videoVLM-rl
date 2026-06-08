@@ -175,6 +175,10 @@ def train(config):
         with open(ds_path) as f:
             ds_config = json.load(f)
 
+    # gradient checkpointing（在 deepspeed.initialize 之前）
+    if training_config.get("gradient_checkpointing", True):
+        policy_model.gradient_checkpointing_enable()
+
     policy_model, optimizer, _, _ = deepspeed.initialize(
         model=policy_model,
         config=ds_config,
@@ -185,10 +189,6 @@ def train(config):
     for p in ref_model.parameters():
         p.requires_grad = False
     # ref model 保持在 CPU，推理时临时搬到 GPU
-
-    # gradient checkpointing
-    if training_config.get("gradient_checkpointing", True):
-        policy_model.gradient_checkpointing_enable()
 
     # DataLoader
     def collate_fn(batch):
