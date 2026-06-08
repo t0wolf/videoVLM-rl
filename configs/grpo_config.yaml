@@ -1,51 +1,36 @@
-# GRPO 训练配置 - 双卡 RTX 4090 优化版
-# 比 DPO 更轻量，不需要 reference model
-# 参考 DeepSeek-R1 的训练范式
+# GRPO 训练配置 - 双卡 RTX 4090
 
 model:
-  name: "./output/sft"  # SFT 后的模型作为起点
-  base_name: "Qwen/Qwen3-VL-8B-Instruct"  # 基础模型（用于 LoRA 初始化）
-  torch_dtype: "bfloat16"
-  device_map: "auto"
+  name: "./output/sft"
 
-lora:
-  r: 64
-  lora_alpha: 128
-  target_modules: "all-linear"
-  lora_dropout: 0.05
-
-# GRPO 特有参数
 grpo:
-  num_generations: 4        # 每个 prompt 生成 4 个回答
-  max_completion_length: 256  # 最大生成长度
-  temperature: 0.7          # 采样温度
-  top_p: 0.9                # nucleus sampling
-  beta: 0.04                # KL 惩罚系数
+  num_generations: 4
+  max_completion_length: 256
+  temperature: 0.7
+  top_p: 0.9
+  beta: 0.04
 
-# 奖励函数权重
 rewards:
-  accuracy_weight: 0.5      # 准确性权重
-  format_weight: 0.2        # 格式权重
-  length_weight: 0.15       # 长度控制权重
-  diversity_weight: 0.15    # 多样性权重
+  accuracy_weight: 0.5
+  format_weight: 0.2
+  length_weight: 0.15
+  diversity_weight: 0.15
 
 training:
   output_dir: "./output/grpo"
   num_train_epochs: 1
-  per_device_train_batch_size: 1      # GRPO 需要更多显存（生成多条回答）
-  gradient_accumulation_steps: 4      # 有效 batch = 2卡 × 1 × 4 = 8
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
   learning_rate: 5.0e-6
   lr_scheduler_type: "cosine"
-  warmup_ratio: 0.05
   bf16: true
   logging_steps: 5
   save_strategy: "epoch"
   save_total_limit: 1
   dataloader_num_workers: 4
   gradient_checkpointing: true
-  deepspeed: "configs/ds_config_zero3.json"  # GRPO 用 ZeRO-3
+  deepspeed: "configs/ds_config_zero3.json"
 
 data:
   grpo_file: "./data/grpo_train.jsonl"
-  num_frames: 8
   max_samples: 1000
