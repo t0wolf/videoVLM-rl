@@ -163,8 +163,9 @@ def train(config):
             ds_config = json.load(f)
 
     # gradient checkpointing（在 deepspeed.initialize 之前）
-    if training_config.get("gradient_checkpointing", True):
-        policy_model.gradient_checkpointing_enable()
+    # gradient checkpointing 暂时关闭排查问题
+    # if training_config.get("gradient_checkpointing", True):
+    #     policy_model.gradient_checkpointing_enable()
 
     policy_model, optimizer, _, _ = deepspeed.initialize(
         model=policy_model,
@@ -253,6 +254,14 @@ def train(config):
             log_ratio_chosen = pi_chosen - ref_chosen
             log_ratio_rejected = pi_rejected - ref_rejected
             loss = -F.logsigmoid(beta * (log_ratio_chosen - log_ratio_rejected)).mean()
+            loss = loss.to(policy_model.device)
+            if not loss.requires_grad:
+                loss.requires_grad = True
+
+            # debug
+            if is_main_process() and global_step == 0:
+                print(f"DEBUG loss.shape={loss.shape} loss.device={loss.device} loss.dtype={loss.dtype} loss.requires_grad={loss.requires_grad} loss.grad_fn={loss.grad_fn}", flush=True)
+                print(f"DEBUG pi_chosen.shape={pi_chosen.shape} pi_chosen.requires_grad={pi_chosen.requires_grad}", flush=True)
 
             # backward
             policy_model.backward(loss)
