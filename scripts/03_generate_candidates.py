@@ -1,6 +1,6 @@
 """
 Step 3a: 用 SFT 模型生成候选回答
-使用 OpenCV 读取视频帧，绕过 torchcodec 问题
+使用 OpenCV 读取视频帧，支持断点续传
 """
 
 import json
@@ -21,7 +21,6 @@ def load_model(model_path):
         model_path, torch_dtype=torch.bfloat16, device_map="auto"
     )
     
-    # 检查是否有 LoRA 适配器
     if os.path.exists(os.path.join(model_path, "adapter_config.json")):
         print("加载 LoRA 适配器...")
         base_model = Qwen3VLForConditionalGeneration.from_pretrained(
@@ -34,7 +33,6 @@ def load_model(model_path):
 
 
 def read_frames(video_path, num_frames=8):
-    """用 OpenCV 读取视频帧"""
     cap = cv2.VideoCapture(video_path)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     indices = np.linspace(0, total - 1, num_frames, dtype=int)
@@ -50,7 +48,6 @@ def read_frames(video_path, num_frames=8):
 
 
 def generate_one(model, processor, video_path, question, temperature, max_new_tokens=256):
-    """生成一条回答"""
     try:
         frames = read_frames(video_path, num_frames=8)
         
@@ -84,6 +81,16 @@ def main():
     parser.add_argument("--max-samples", type=int, default=500)
     args = parser.parse_args()
 
+    # 加载已有结果（支持续传）
+    existing_questions = set()
+    if os.path.exists(args.output):
+        with open(args.output, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    item = json.loads(line)
+                    existing_questions.add(item.get("question", ""))
+        print(f"已有 {len(existing_questions)} 条结果，跳过这些问题")
+
     model, processor = load_model(args.model)
 
     # 加载数据
@@ -99,45 +106,47 @@ def main():
                         question = conv["content"].replace("<video>", "").strip()
                     elif conv["role"] == "assistant":
                         answer = conv["content"]
-                if question and answer and question != "nan":
+                if question and answer and question != "nan" and question not in existing_questions:
                     questions.append({"video": video, "question": question, "answer": answer})
 
     import random
     random.seed(42)
-    if len(questions) > args.max_samples:
-        questions = random.sample(questions, args.max_samples)
-    print(f"共 {len(questions)} 个问题\n")
+    if len(questions) > args.max_samples - len(existing_questions):
+        questions = random.sample(questions, args.max_samples - len(existing_questions))
+    
+    print(f"待处理: {len(questions)} 个问题\n")
 
     temperatures = [0.5, 0.7, 0.9, 1.1]
     results = []
+    total_count = len(existing_questions)
 
-    for i, q in enumerate(questions):
-        print(f"[{i+1}/{len(questions)}] {q['question'][:50]}...")
-        
-        candidates = []
-        for j, temp in enumerate(temperatures[:args.num_candidates]):
-            response = generate_one(model, processor, q["video"], q["question"], temp)
-            if response:
-                candidates.append({"response": response, "temperature": temp})
-                print(f"  [{j+1}] {response[:60]}...")
-        
-        if len(candidates) >= 2:
-            results.append({
-                "video": q["video"], "question": q["question"],
-                "ground_truth": q["answer"], "candidates": candidates
-            })
-        
-        if (i + 1) % 100 == 0:
-            with open(args.output, "w", encoding="utf-8") as f:
-                for r in results:
-                    f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    # 追加模式
+    with open(args.output, "a", encoding="utf-8") as f:
+        for i, q in enumerate(questions):
+            print(f"[{total_count + i + 1}/{args.max_samples}] {q['question'][:50]}...")
+            
+            candidates = []
+            for j, temp in enumerate(temperatures[:args.num_candidates]):
+                response = generate_one(model, processor, q["video"], q["question"], temp)
+                if response:
+                    candidates.append({"response": response, "temperature": temp})
+                    print(f"  [{j+1}] {response[:60]}...")
+            
+            if len(candidates) >= 2:
+                result = {
+                    "video": q["video"], "question": q["question"],
+                    "ground_truth": q["answer"], "candidates": candidates
+                }
+                f.write(json.dumps(result, ensure_ascii=False) + "\n")
+                f.flush()
+                results.append(result)
+            
+            # 每 50 条打印进度
+            if (i + 1) % 50 == 0:
+                print(f"  已完成 {len(results)} 条\n")
 
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    with open(args.output, "w", encoding="utf-8") as f:
-        for r in results:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    
-    print(f"\n完成！{len(results)} 条候选 | {args.output}")
+    print(f"\n完成！新增 {len(results)} 条 | 总计 {total_count + len(results)} 条")
+    print(f"输出: {args.output}")
 
 
 if __name__ == "__main__":
