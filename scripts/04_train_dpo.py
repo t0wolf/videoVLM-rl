@@ -167,9 +167,9 @@ def train(config):
         with open(ds_path) as f:
             ds_config = json.load(f)
 
-    # gradient checkpointing（在 deepspeed.initialize 之前）
-    if training_config.get("gradient_checkpointing", True):
-        policy_model.gradient_checkpointing_enable()
+    # gradient checkpointing 关闭（与 ZeRO-3 + LoRA 有兼容问题）
+    # if training_config.get("gradient_checkpointing", True):
+    #     policy_model.gradient_checkpointing_enable()
 
     policy_model, optimizer, _, _ = deepspeed.initialize(
         model=policy_model,
@@ -226,6 +226,17 @@ def train(config):
         print(f"\n{'='*60}", flush=True)
         print(f"开始 DPO 训练 | beta={beta} | epochs={num_epochs}", flush=True)
         print(f"{'='*60}\n", flush=True)
+
+    # debug: 检查可训练参数
+    if is_main_process():
+        trainable = sum(p.requires_grad for p in policy_model.parameters())
+        total = sum(1 for _ in policy_model.parameters())
+        print(f"DEBUG: trainable params = {trainable}/{total}", flush=True)
+        # 检查一个 LoRA 参数
+        for n, p in policy_model.named_parameters():
+            if "lora" in n.lower():
+                print(f"DEBUG: {n} requires_grad={p.requires_grad} dtype={p.dtype}", flush=True)
+                break
 
     global_step = 0
     for epoch in range(num_epochs):
