@@ -1,17 +1,9 @@
-# DPO 训练配置 - 双卡 RTX 4090 优化版
+# DPO 训练配置 - 双卡 RTX 4090
 
 model:
-  policy_name: "./output/sft"  # SFT 后的模型
-  ref_name: "./ckpts/Qwen3-VL-8B-Instruct"  # 原始模型作为 reference
-  base_name: "./ckpts/Qwen3-VL-8B-Instruct"  # 基础模型（用于 LoRA）
+  policy_name: "./output/sft"
+  ref_name: "./ckpts/Qwen3-VL-8B-Instruct"
   torch_dtype: "bfloat16"
-  device_map: "auto"
-
-lora:
-  r: 64
-  lora_alpha: 128
-  target_modules: "all-linear"
-  lora_dropout: 0.05
 
 dpo:
   beta: 0.1
