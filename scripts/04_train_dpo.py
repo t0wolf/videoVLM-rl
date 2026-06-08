@@ -70,24 +70,11 @@ class DPODataset(Dataset):
         chosen_full = prompt_ids + chosen_ids
         rejected_full = prompt_ids + rejected_ids
 
-        # padding
-        pad_len = max(len(chosen_full), len(rejected_full))
-        pad_id = self.tokenizer.pad_token_id or 0
-
-        chosen_mask = [1] * len(chosen_full) + [0] * (pad_len - len(chosen_full))
-        chosen_full = chosen_full + [pad_id] * (pad_len - len(chosen_full))
-
-        rejected_mask = [1] * len(rejected_full) + [0] * (pad_len - len(rejected_full))
-        rejected_full = rejected_full + [pad_id] * (pad_len - len(rejected_full))
-
-        # prompt 长度（用于计算 response 部分的 log prob）
         prompt_len = len(prompt_ids)
 
         return {
             "chosen_input_ids": torch.tensor(chosen_full, dtype=torch.long),
-            "chosen_attention_mask": torch.tensor(chosen_mask, dtype=torch.long),
             "rejected_input_ids": torch.tensor(rejected_full, dtype=torch.long),
-            "rejected_attention_mask": torch.tensor(rejected_mask, dtype=torch.long),
             "prompt_len": torch.tensor(prompt_len, dtype=torch.long),
         }
 
@@ -190,10 +177,32 @@ def train(config):
         p.requires_grad = False
     # ref model 保持在 CPU，推理时临时搬到 GPU
 
-    # DataLoader
+    # DataLoader（手动 padding）
+    pad_id = tokenizer.pad_token_id or 0
+
     def collate_fn(batch):
-        keys = batch[0].keys()
-        return {k: torch.stack([b[k] for b in batch]) for k in keys}
+        max_len = max(
+            max(b["chosen_input_ids"].size(0) for b in batch),
+            max(b["rejected_input_ids"].size(0) for b in batch),
+        )
+        chosen_ids, chosen_masks = [], []
+        rejected_ids, rejected_masks = [], []
+        prompt_lens = []
+        for b in batch:
+            cl = b["chosen_input_ids"].size(0)
+            rl = b["rejected_input_ids"].size(0)
+            chosen_ids.append(F.pad(b["chosen_input_ids"], (0, max_len - cl), value=pad_id))
+            chosen_masks.append(F.pad(torch.ones(cl), (0, max_len - cl), value=0))
+            rejected_ids.append(F.pad(b["rejected_input_ids"], (0, max_len - rl), value=pad_id))
+            rejected_masks.append(F.pad(torch.ones(rl), (0, max_len - rl), value=0))
+            prompt_lens.append(b["prompt_len"])
+        return {
+            "chosen_input_ids": torch.stack(chosen_ids),
+            "chosen_attention_mask": torch.stack(chosen_masks).long(),
+            "rejected_input_ids": torch.stack(rejected_ids),
+            "rejected_attention_mask": torch.stack(rejected_masks).long(),
+            "prompt_len": torch.stack(prompt_lens),
+        }
 
     dataloader = DataLoader(
         dataset,
