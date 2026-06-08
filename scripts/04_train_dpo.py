@@ -184,7 +184,7 @@ def train(config):
     # ref model 不需要优化器，冻结参数
     for p in ref_model.parameters():
         p.requires_grad = False
-    ref_model = ref_model.to(policy_model.device)
+    # ref model 保持在 CPU，推理时临时搬到 GPU
 
     # gradient checkpointing
     if training_config.get("gradient_checkpointing", True):
@@ -230,10 +230,15 @@ def train(config):
             pi_chosen = compute_log_probs(policy_model, chosen_ids, chosen_mask, prompt_len)
             pi_rejected = compute_log_probs(policy_model, rejected_ids, rejected_mask, prompt_len)
 
-            # ref model 计算 log probs（no grad）
+            # ref model 在 CPU 上计算 log probs（省显存）
             with torch.no_grad():
-                ref_chosen = compute_log_probs(ref_model, chosen_ids, chosen_mask, prompt_len)
-                ref_rejected = compute_log_probs(ref_model, rejected_ids, rejected_mask, prompt_len)
+                cpu_ids_c = chosen_ids.cpu()
+                cpu_mask_c = chosen_mask.cpu()
+                cpu_ids_r = rejected_ids.cpu()
+                cpu_mask_r = rejected_mask.cpu()
+                cpu_plen = prompt_len.cpu()
+                ref_chosen = compute_log_probs(ref_model, cpu_ids_c, cpu_mask_c, cpu_plen).to(policy_model.device)
+                ref_rejected = compute_log_probs(ref_model, cpu_ids_r, cpu_mask_r, cpu_plen).to(policy_model.device)
 
             # DPO loss
             log_ratio_chosen = pi_chosen - ref_chosen
