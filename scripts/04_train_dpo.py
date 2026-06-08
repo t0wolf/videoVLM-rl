@@ -144,7 +144,7 @@ def train(config):
     if is_main_process():
         print(f"加载 Reference Model: {ref_path}", flush=True)
     ref_model = Qwen3VLForConditionalGeneration.from_pretrained(
-        ref_path, torch_dtype=torch.bfloat16
+        ref_path, torch_dtype=torch.float32
     )
 
     # 加载数据
@@ -272,14 +272,13 @@ def train(config):
                 )
 
     # 保存
+    import torch.distributed as dist
+    if dist.is_initialized():
+        dist.barrier()
+    output_path = training_config["output_dir"]
+    os.makedirs(output_path, exist_ok=True)
     if is_main_process():
-        output_path = training_config["output_dir"]
-        os.makedirs(output_path, exist_ok=True)
-        # 合并 LoRA 并保存
-        if hasattr(policy_model, "module"):
-            unwrapped = policy_model.module
-        else:
-            unwrapped = policy_model
+        unwrapped = policy_model.module if hasattr(policy_model, "module") else policy_model
         if hasattr(unwrapped, "merge_and_unload"):
             unwrapped = unwrapped.merge_and_unload()
         unwrapped.save_pretrained(output_path)
